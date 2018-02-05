@@ -12,7 +12,7 @@ function global:Update-ScriptNumbers{
 	[Parameter(Position=2)]
 	[string]$NewVersion = "",
 	[Parameter(Position=3)]
-	[string]$StartScriptString = "",
+	[string]$StartScriptString = 0,
 	[Parameter(Position=4)]
 	[string]$EndScriptString = "",
 	[Parameter(Position=5)]
@@ -21,7 +21,7 @@ function global:Update-ScriptNumbers{
 	[int]$SeedNo = 0
 	)
 
-	if 	($EndScriptString.length -eq 0)
+	if($EndScriptString.length -eq 0)
 	{
 		$files = ls $Path *.sql | where { $_.Name -gt $StartScriptString } | sort Name 
 	}
@@ -30,28 +30,45 @@ function global:Update-ScriptNumbers{
 		$files = ls $Path *.sql | where { $_.Name -gt $StartScriptString -and $_.Name -lt $EndScriptString } | sort Name 
 	}
 
+	$versionMatch = Get-Content -Path "$($files[0].FullName)" | %{ [Regex]::Matches($_, "\([\d,|\s,]+\)") } #| %{ $_.Value }
+	$versionArray = $versionMatch.Value.split(",()")
+
 	if ($PreviousVersion.Length -eq 0)
 	{
-		$PreviousVersion = Read-Host "Please enter a previous number, i.e. the previous version before $($files[0])"
+		Write-Host "Looking for previous version number in $($files[0].FullName)"	
+		$PreviousVersion = "$($versionArray[1]).$($versionArray[2]).$($versionArray[3]).$($versionArray[4])"
+		Write-Host "Previous Version found $($PreviousVersion)"
 	}
 
-	#Operate on SQL files
+	if ($NewVersion.Length -eq 0)
+	{
+		Write-Host "Looking for current version number in $($files[0].FullName)"	
+		$NewVersion = "$($versionArray[5]).$($versionArray[6]).$($versionArray[7]).$($versionArray[8])"
+		Write-Host "Version found $($NewVersion)"
+	}
+
 	$files | % { Write-Host $_.Name }
 	Read-Host "Press enter to re-number these files with previous version starting at $($PreviousVersion) and new version starting at $($NewVersion). File numbers will start from $($SeedNo)"
 	
-	#for each file rename and update contents
+	# iterate over files, increment the version number in the file contents and also increment the name of each file
 	Foreach ($file in $files )
 	{
 		$paddedNumber = $SeedNo.ToString("0#");
 		$newName = $file.Name -replace '^\d+', $paddedNumber
-		
+
+		if($file.Name -eq $newName)
+		{
+			$SeedNo++	
+			continue
+		}
+
 		$logName = [io.path]::GetFileNameWithoutExtension($newName) + ".log"
 		$newContent = Get-Content -path "$($file.FullName)" | % { $_ -Replace "SPOOL\s[0-9]{2}_[0-9]{8}[\w|\/.]+", ("SPOOL " + $logName) }
 		Set-Content -Path "$($file.FullName)" -Value $newContent
 		
 		$commaSeparatedNewVersionNo = $NewVersion -replace "\.", ","
 		$commaSeparatedPreviousVersionNo = $PreviousVersion -replace "\.", ","
-		$commaSeparatedOldAndPreviousVersionNos = $PreviousVersion + "," + $NewVersion
+		$commaSeparatedOldAndPreviousVersionNos = $commaSeparatedPreviousVersionNo + "," + $commaSeparatedNewVersionNo
 		
 		$newCheckDbVersionString = "CMS_ESM.DB_MAINTENANCE.CHECK_DBVERSION(" + $commaSeparatedOldAndPreviousVersionNos + ");";
 		$newContent = Get-Content -path "$($file.FullName)" | % { $_ -Replace "CMS_ESM.DB_MAINTENANCE.CHECK_DBVERSION\([\d|\s|,]+\);", ("CMS_ESM.DB_MAINTENANCE.CHECK_DBVERSION($($commaSeparatedOldAndPreviousVersionNos));") }
