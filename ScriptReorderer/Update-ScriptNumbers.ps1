@@ -2,7 +2,7 @@
 .SYNOPSIS
 	Updates SQL upgrade script file numbers for a given range
 .DESCRIPTION
-	Defaults to reordering entire folder. Optionally re-number a subset starting from a specific start number
+	Defaults to reordering entire folder. Optionally re-number a subset starting from a specific start number and end number
 .NOTES
 #>
 function global:Update-ScriptNumbers{
@@ -18,7 +18,7 @@ function global:Update-ScriptNumbers{
 	[Parameter(Position=5)]
 	[string]$Path = (Get-Item -Path ".\" -Verbose).FullName,
 	[Parameter(Position=6)]
-	[int]$SeedNo = 0
+	[int]$FileNameNumber = 0
 	)
 
 	if($EndScriptString.length -eq 0)
@@ -48,19 +48,13 @@ function global:Update-ScriptNumbers{
 	}
 
 	$files | % { Write-Host $_.Name }
-	Read-Host "Press enter to re-number these files with previous version starting at $($PreviousVersion) and new version starting at $($NewVersion). File numbers will start from $($SeedNo)"
+	Read-Host "Press enter to re-number these files:"
 	
-	# iterate over files, increment the version number in the file contents and also increment the name of each file
+	# iterate over files, replace and increment the file number (and number in the file contents and also increment the name of each file
 	Foreach ($file in $files )
 	{
-		$paddedNumber = $SeedNo.ToString("0#");
+		$paddedNumber = $FileNameNumber.ToString("0#");
 		$newName = $file.Name -replace '^\d+', $paddedNumber
-
-		if($file.Name -eq $newName)
-		{
-			$SeedNo++	
-			continue
-		}
 
 		$logName = [io.path]::GetFileNameWithoutExtension($newName) + ".log"
 		$newContent = Get-Content -path "$($file.FullName)" | % { $_ -Replace "SPOOL\s[0-9]{2}_[0-9]{8}[\w|\/.]+", ("SPOOL " + $logName) }
@@ -82,10 +76,14 @@ function global:Update-ScriptNumbers{
 		$arrVersionNo = $NewVersion -split '\.'
 		$arrVersionNo[3] = ([int]$arrVersionNo[3] + 1)
 		$NewVersion = $arrVersionNo[0] + "." + $arrVersionNo[1] + "." + $arrVersionNo[2] + "." + $arrVersionNo[3]
+
+		if($file.Name -ne $newName)
+		{
+			Write-Host "Renaming $($file.Name) to $($newName)"
+			$file | Rename-Item -NewName $newName
+		}
 		
-		Write-Host "Renaming $($file.Name) to $($newName)"
-		$file | Rename-Item -NewName $newName
-		$SeedNo++
+		$FileNameNumber++
 	}
 }
 
